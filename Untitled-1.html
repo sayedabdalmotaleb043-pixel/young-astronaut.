@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Junior Astronaut Mission Trainer</title>
+<style>
+:root{--space:#14213d;--paper:#f4efe6;--ink:#1d2433;--mut:#6b7385;--org:#ff5a1f;--ok:#2f9e6b;--warn:#e8a317;--bad:#d64545;--reg:#c9c3b8}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--space);color:var(--ink);font-family:'Trebuchet MS','Segoe UI',sans-serif;line-height:1.45}
+main{max-width:1000px;margin:0 auto;padding:16px}
+h1{color:#fff;font-size:1.6rem;margin:8px 0 14px}
+h2{margin:0 0 8px;font-size:1.05rem}
+.panel{background:var(--paper);border-radius:14px;padding:14px;margin-bottom:12px}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:9px 14px;background:var(--space);color:#fff}
+button:focus-visible{outline:3px solid var(--org);outline-offset:2px}
+button:disabled{opacity:.4;cursor:not-allowed}
+.go{background:var(--org);font-weight:700;font-size:1.05rem;padding:12px 20px}
+.choice{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px}
+.choice button{background:#fff;color:var(--ink);border:2px solid var(--reg)}
+.choice button.on{border-color:var(--org);background:#fff1ea;font-weight:700}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}
+.bar{display:grid;grid-template-columns:90px 1fr 36px;align-items:center;gap:8px;margin:6px 0;font-size:.92rem}
+.bar i{display:block;height:14px;background:#ddd6c8;border-radius:8px;overflow:hidden}
+.bar b{display:block;height:100%;border-radius:8px}
+.bar em{font-style:normal;text-align:right;color:var(--mut)}
+.top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px;font-weight:700}
+.build{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;padding:8px 0;border-top:1px solid var(--reg)}
+.build small{color:var(--mut);grid-column:1}
+.build button{grid-row:1/3;grid-column:2}
+.hab{font-size:1.5rem;letter-spacing:2px;min-height:110px;line-height:1.7;background:#e5dfd2;border-radius:10px;padding:8px}
+.alert{padding:9px 12px;border-radius:10px;margin-bottom:10px;font-weight:600}
+.alert.warn{background:#fff0c9;border-left:6px solid var(--warn)}
+.alert.bad{background:#ffdcdc;border-left:6px solid var(--bad)}
+.alert.ok{background:#dcf3e8;border-left:6px solid var(--ok)}
+#log p{margin:4px 0;font-size:.92rem}
+.bad{color:var(--bad)}.warn{color:#a56d00}.ok{color:var(--ok)}
+.hide{display:none}
+.lesson{background:#fff;border-left:6px solid var(--org);padding:10px 12px;border-radius:8px}
+small.src{color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+<h1>&#128640; Junior Astronaut Mission Trainer</h1>
+
+<!-- START SCREEN -->
+<section id="start" class="panel">
+  <h2>Your mission: keep 4 astronauts alive for 40 days</h2>
+  <p>Every turn is one day. Build systems with your credits. Every choice helps one thing and costs another, so plan ahead.</p>
+  <ul>
+    <li><b>Power</b> runs life support and greenhouses. No power, no oxygen.</li>
+    <li><b>Solar storms</b> hurt the crew. Regolith shields reduce the damage.</li>
+    <li><b>Read the forecast</b> and prepare before trouble arrives.</li>
+  </ul>
+  <h2>Location</h2>
+  <div class="choice" id="pickLoc">
+    <button data-v="moon" class="on">&#127769; Moon (two-week night)</button>
+    <button data-v="mars">&#128992; Mars (dust storms)</button>
+  </div>
+  <h2>Difficulty</h2>
+  <div class="choice" id="pickDiff">
+    <button data-v="cadet" class="on">Cadet (hints, gentler)</button>
+    <button data-v="engineer">Engineer (no hints, full damage)</button>
+  </div>
+  <p><label><input type="checkbox" id="real" checked> Use real solar flares from NASA DONKI (needs internet)</label></p>
+  <button class="go" id="startBtn">Start mission</button>
+</section>
+
+<!-- GAME SCREEN -->
+<section id="game" class="hide">
+  <div id="alerts"></div>
+  <div class="grid">
+    <div>
+      <div class="panel">
+        <div class="top"><span id="dayTxt"></span><span id="crTxt"></span></div>
+        <div id="skyTxt"></div>
+        <div id="bars"></div>
+        <small class="src" id="pwTxt"></small>
+      </div>
+      <div class="panel">
+        <h2>Your outpost</h2>
+        <div class="hab" id="hab"></div>
+      </div>
+      <div class="panel">
+        <h2>Mission log</h2>
+        <div id="log"></div>
+      </div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>Build</h2>
+        <div id="shop"></div>
+      </div>
+      <button class="go" id="endTurn" style="width:100%">End day &#9654;</button>
+      <p><small style="color:#cfd6ea" id="dataSrc"></small></p>
+    </div>
+  </div>
+</section>
+
+<!-- END SCREEN -->
+<section id="end" class="panel hide"></section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const cl = v => Math.max(0, Math.min(100, v));
+const DAYS = 40;
+
+const B = {
+  solar:   {n:'Solar panel',     i:'☀️', c:10, d:'+20 power in sunlight'},
+  reactor: {n:'Fission reactor', i:'⚛️', c:35, d:'+40 power, day and night'},
+  battery: {n:'Battery',         i:'🔋', c:12, d:'+80 power storage'},
+  eclss:   {n:'Oxygen recycler', i:'💨', c:15, d:'+7 oxygen, uses 15 power'},
+  farm:    {n:'Greenhouse',      i:'🌱', c:15, d:'+6 food, +2 oxygen, uses 12 power'},
+  shield:  {n:'Regolith shield', i:'🪨', c:20, d:'blocks 25% of radiation (max 90%)'}
+};
+
+const LOC = {
+  moon: {n:'the Moon',
+    sun: (t, G) => t % 30 < 15 ? 1 : 0,
+    txt: (t, G) => t % 30 < 15 ? `☀️ Lunar day (${15 - t % 30} days of sunlight left)` : `🌑 Lunar night (${30 - t % 30} days until sunrise)`},
+  mars: {n:'Mars',
+    sun: (t, G) => G.dust.some(d => t >= d && t < d + 5) ? 0.12 : 0.5,
+    txt: (t, G) => G.dust.some(d => t >= d && t < d + 5) ? '🌪️ Dust storm: sunlight is almost blocked' : '🟠 Thin, clear sky (sunlight is about half of Earth)'}
+};
+
+const LESSONS = {
+  power: 'A blackout switched off life support. The Moon has about 14 Earth days of night, so outposts that rely only on solar panels need big batteries or another power source, like the fission reactors NASA is studying for the Moon.',
+  dust: 'A dust storm blocked the sunlight and the power ran out. Martian dust storms can last weeks, and NASA\'s Opportunity rover lost contact during one in 2018. Solar-only missions on Mars need a backup.',
+  o2: 'The oxygen ran out. Air must be made and cleaned all the time, and those machines need power. Real crews plan for several backup systems.',
+  food: 'The food ran out. Plants need power, light and water, and growing food is slow. Real missions plan and test food supplies long before launch.',
+  rad: 'Radiation from a solar storm harmed the crew. Space weather is real. Thick material like regolith (moon or Mars soil) or water can be used as shielding, and crews may shelter during storms.'
+};
+
+let G = null, pick = {loc: 'moon', diff: 'cadet'};
+
+function setupChoice(id, key) {
+  $(id).onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...$(id).children].forEach(x => x.classList.toggle('on', x === b));
+    pick[key] = b.dataset.v;
+  };
+}
+setupChoice('pickLoc', 'loc');
+setupChoice('pickDiff', 'diff');
+
+async function loadReal() {
+  try {
+    const e = new Date(), s = new Date(e - 864e5 * 120), f = d => d.toISOString().slice(0, 10);
+    const r = await fetch(`https://api.nasa.gov/DONKI/FLR?startDate=${f(s)}&endDate=${f(e)}&api_key=DEMO_KEY`);
+    const j = await r.json();
+    const a = j.filter(x => /^[MX]/.test(x.classType || '')).map(x => ({c: x.classType, d: (x.beginTime || '').slice(0, 10)}));
+    return a.length ? a : null;
+  } catch (err) { return null; }
+}
+
+$('startBtn').onclick = async () => {
+  $('startBtn').disabled = true; $('startBtn').textContent = 'Loading...';
+  const real = $('real').checked ? await loadReal() : null;
+  newGame(pick.loc, pick.diff, real);
+  $('startBtn').disabled = false; $('startBtn').textContent = 'Start mission';
+};
+
+function newGame(loc, diff, real) {
+  G = {loc, diff, t: 0, cr: 40, o2: 100, food: 100, hp: 100, pow: 60,
+       b: {solar: 2, reactor: 0, battery: 0, eclss: 1, farm: 1, shield: 0},
+       storms: {}, dust: [], log: [], lastBlack: -99, over: false, real: !!real};
+  const k = real ? Math.min(7, real.length) : 6;
+  const gap = Math.floor(34 / k);
+  for (let i = 0; i < k; i++) {
+    const t = 4 + i * gap + Math.floor(Math.random() * 3);
+    if (real) {
+      const f = real[i % real.length];
+      G.storms[t] = {lvl: f.c[0] === 'X' ? 2 : 1, label: `${f.c} flare (real event, ${f.d})`};
+    } else {
+      const x = Math.random() < 0.3;
+      G.storms[t] = {lvl: x ? 2 : 1, label: x ? 'Severe solar storm' : 'Solar storm'};
+    }
+  }
+  G.dust = [8 + Math.floor(Math.random() * 6), 24 + Math.floor(Math.random() * 8)];
+  $('start').classList.add('hide'); $('end').classList.add('hide'); $('game').classList.remove('hide');
+  $('dataSrc').textContent = real ? 'Storm data: NASA DONKI solar flare records, replayed in the game.' : 'Storm data: simulated.';
+  G.log.push(['', 'Welcome to ' + LOC[loc].n + '. Build before the trouble starts.']);
+  render();
+}
+
+function stats() {
+  const sun = LOC[G.loc].sun(G.t, G);
+  return {sun,
+    gen: G.b.solar * 20 * sun + G.b.reactor * 40,
+    dem: 10 + G.b.eclss * 15 + G.b.farm * 12,
+    cap: 60 + G.b.battery * 80};
+}
+
+function render() {
+  const s = stats(), look = G.diff === 'cadet' ? 3 : 1;
+  $('dayTxt').textContent = `Day ${G.t + 1} of ${DAYS}`;
+  $('crTxt').textContent = `💰 ${G.cr} credits`;
+  $('skyTxt').textContent = LOC[G.loc].txt(G.t, G);
+  const bar = (l, v, c) => `<div class="bar"><span>${l}</span><i><b style="width:${cl(v)}%;background:${c}"></b></i><em>${Math.round(v)}</em></div>`;
+  const col = v => v > 50 ? 'var(--ok)' : v > 25 ? 'var(--warn)' : 'var(--bad)';
+  $('bars').innerHTML =
+    bar('⚡ Power', G.pow / s.cap * 100, col(G.pow / s.cap * 100)) +
+    bar('💨 Oxygen', G.o2, col(G.o2)) +
+    bar('🍎 Food', G.food, col(G.food)) +
+    bar('❤️ Crew', G.hp, col(G.hp));
+  $('pwTxt').textContent = `Power: +${Math.round(s.gen)} made, −${s.dem} used per day. Stored: ${Math.round(G.pow)}/${s.cap}. Shield: ${Math.min(90, G.b.shield * 25)}%.`;
+
+  let al = '';
+  for (let k = 0; k < look; k++) {
+    const st = G.storms[G.t + k];
+    if (st) al += `<div class="alert bad">☢️ Forecast: ${st.label} ${k === 0 ? 'hits at the end of today' : 'in ' + k + ' day' + (k > 1 ? 's' : '')}. Shield strength now: ${Math.min(90, G.b.shield * 25)}%.</div>`;
+  }
+  if (G.loc === 'mars') {
+    const d = G.dust.find(x => x > G.t && x - G.t <= look + 1);
+    if (d) al += `<div class="alert warn">🌪️ Forecast: dust storm in ${d - G.t} day(s). Solar power will almost vanish for 5 days.</div>`;
+  }
+  if (G.diff === 'cadet') {
+    const ahead = G.pow + s.gen - s.dem;
+    if (ahead < 0) al += '<div class="alert warn">⚡ Hint: you will run out of power tomorrow. Add power or batteries.</div>';
+    else if (G.o2 < 40) al += '<div class="alert warn">💨 Hint: oxygen is low. Build an oxygen recycler.</div>';
+    else if (G.food < 40) al += '<div class="alert warn">🍎 Hint: food is low. Build a greenhouse.</div>';
+  }
+  $('alerts').innerHTML = al;
+
+  $('hab').innerHTML = '👩‍🚀'.repeat(4) + '<br>' + Object.keys(B).map(k => B[k].i.repeat(G.b[k])).join(' ');
+  $('shop').innerHTML = Object.keys(B).map(k =>
+    `<div class="build"><b>${B[k].i} ${B[k].n} (x${G.b[k]})</b><small>${B[k].d}</small>` +
+    `<button data-k="${k}" ${G.cr < B[k].c ? 'disabled' : ''}>Build ${B[k].c}💰</button></div>`).join('');
+  $('log').innerHTML = G.log.slice(-6).reverse().map(l => `<p class="${l[0]}">${l[1]}</p>`).join('');
+}
+
+$('shop').onclick = e => {
+  const b = e.target.closest('button'); if (!b || G.over) return;
+  const k = b.dataset.k;
+  if (G.cr >= B[k].c) { G.cr -= B[k].c; G.b[k]++; G.log.push(['ok', `Built: ${B[k].n}.`]); render(); }
+};
+
+$('endTurn').onclick = () => {
+  if (G.over) return;
+  const s = stats(), msg = m => G.log.push(m);
+  let avail = G.pow + s.gen, on = avail >= s.dem;
+  G.pow = on ? Math.min(s.cap, avail - s.dem) : 0;
+  if (!on) { G.lastBlack = G.t; msg(['bad', '⚡ Blackout! Life support and greenhouses shut down.']); }
+
+  G.o2 = cl(G.o2 + (on ? G.b.eclss * 7 + G.b.farm * 2 : 0) - 12);
+  G.food = cl(G.food + (on ? G.b.farm * 6 : 0) - 10);
+
+  const mit = Math.min(0.9, G.b.shield * 0.25), ease = G.diff === 'cadet' ? 0.5 : 1;
+  const dmg = {rad: Math.round(2 * (1 - mit) * ease), o2: 0, food: 0};
+  const st = G.storms[G.t];
+  if (st) {
+    const d = Math.round(25 * st.lvl * (1 - mit) * ease);
+    dmg.rad += d;
+    msg([d > 10 ? 'bad' : 'warn', `☢️ ${st.label}! Shield blocked ${Math.round(mit * 100)}%. Crew took ${d} damage.`]);
+  }
+  if (G.o2 <= 0) { dmg.o2 = Math.round(30 * ease); msg(['bad', '💨 No oxygen! The crew is suffocating.']); }
+  if (G.food <= 0) { dmg.food = Math.round(15 * ease); msg(['bad', '🍎 No food! The crew is starving.']); }
+
+  const total = dmg.rad + dmg.o2 + dmg.food;
+  const heal = (G.o2 > 30 && G.food > 30) ? 3 : 0;
+  G.hp = cl(G.hp - total + heal);
+
+  if (G.hp <= 0) {
+    let key = Object.keys(dmg).sort((a, b) => dmg[b] - dmg[a])[0];
+    if ((key === 'o2' || key === 'food') && G.lastBlack >= G.t - 4) key = G.loc === 'mars' ? 'dust' : 'power';
+    return finish(false, key);
+  }
+  G.t++; G.cr += G.diff === 'cadet' ? 12 : 10;
+  if (G.t >= DAYS) return finish(true);
+  render();
+};
+
+function finish(win, cause) {
+  G.over = true;
+  const score = G.t * 10 + Math.round(G.hp * 2) + (win ? 200 : 0);
+  $('game').classList.add('hide'); $('end').classList.remove('hide');
+  $('end').innerHTML = win
+    ? `<h2>🎉 Mission complete!</h2><p>All four astronauts survived ${DAYS} days on ${LOC[G.loc].n}. Crew health: ${Math.round(G.hp)}%.</p>
+       <div class="lesson"><b>What you learned:</b> you balanced power, life support, food and radiation protection. Real mission designers make the same trade-offs, because every system depends on the others.</div>`
+    : `<h2>Mission failed on day ${G.t + 1}</h2><p>The crew was lost.</p>
+       <div class="lesson"><b>What went wrong:</b> ${LESSONS[cause]}</div>
+       <p><b>Try this next time:</b> check the forecast every day and build for the next problem, not only the current one.</p>`;
+  $('end').innerHTML += `<p><b>Score: ${score}</b></p><button class="go" id="again">Play again</button>`;
+  $('again').onclick = () => { $('end').classList.add('hide'); $('start').classList.remove('hide'); };
+}
+</script>
+</body>
+</html>
